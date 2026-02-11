@@ -6,3 +6,5 @@ newsapi-python
 nltk
 python-dotenv
 scipy
+lxml
+html5lib
