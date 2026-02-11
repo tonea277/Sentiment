@@ -206,7 +206,7 @@ def get_company_name(ticker):
 
 # Streamlit App
 def main():
-    st.set_page_config(page_title="Stock Sentiment Analyzer", page_icon="📈", layout="wide")
+    st.set_page_config(page_title="Stock Sentiment Analysis", page_icon="📈", layout="wide")
     
     # Initialize database
     init_db()
@@ -219,7 +219,7 @@ def main():
     
     # Authentication UI
     if not st.session_state.logged_in:
-        st.title("VP Analytics Stock Sentiment Analyzer - Login")
+        st.title("Attaining Alpha/VP Analytics Stock Sentiment Analyzer (Tony Ashton) - Login")
         
         tab1, tab2 = st.tabs(["Login", "Register"])
         
