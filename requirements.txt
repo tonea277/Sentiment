@@ -1,0 +1,8 @@
+streamlit
+pandas
+matplotlib
+yfinance
+newsapi-python
+nltk
+python-dotenv
+scipy

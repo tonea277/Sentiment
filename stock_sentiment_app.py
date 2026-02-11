@@ -1,0 +1,328 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import yfinance as yf
+from newsapi import NewsApiClient
+from datetime import datetime, timedelta
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import nltk
+import os
+from dotenv import load_dotenv
+import hashlib
+import sqlite3
+import uuid
+
+# Load environment variables
+load_dotenv()
+
+# Download VADER lexicon (only runs once)
+@st.cache_resource
+def download_nltk_data():
+    nltk.download('vader_lexicon', quiet=True)
+    return SentimentIntensityAnalyzer()
+
+# Initialize sentiment analyzer
+sia = download_nltk_data()
+
+# Set pandas display option
+pd.set_option("display.max_colwidth", 1000)
+
+# Database setup
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS users
+    (id TEXT PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT, api_usage INTEGER)
+    ''')
+    conn.commit()
+    conn.close()
+
+# User authentication functions
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_user(username, password):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    user_id = str(uuid.uuid4())
+    try:
+        c.execute("INSERT INTO users VALUES (?, ?, ?, ?)", 
+                 (user_id, username, hash_password(password), 0))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def verify_user(username, password):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    if result and result[0] == hash_password(password):
+        return True
+    return False
+
+def track_api_usage(username):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("UPDATE users SET api_usage = api_usage + 1 WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+# Function to get articles from NewsAPI
+def get_articles(query, from_date):
+    try:
+        # Use the admin API key from environment variables
+        api_key = os.getenv("NEWSAPI_KEY")
+        if not api_key:
+            st.error("Server configuration error: API key not found")
+            return []
+            
+        newsapi = NewsApiClient(api_key=api_key)
+        
+        articles = newsapi.get_everything(
+            q=query,
+            from_param=from_date,
+            language='en',
+            sort_by='publishedAt'
+        )
+        
+        return articles.get('articles', [])
+    except Exception as e:
+        st.error(f"Error fetching articles: {str(e)}")
+        return []
+
+# Function to calculate sentiment scores
+def calculate_sentiment(articles_df):
+    sentiment_scores = []
+    
+    for text in articles_df['description']:
+        if isinstance(text, str):
+            sentiment_scores.append(sia.polarity_scores(text)['compound'])
+        else:
+            sentiment_scores.append(0)
+    
+    articles_df['sentiment'] = sentiment_scores
+    return articles_df
+
+# Function to get company name from ticker
+def get_company_name(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return info.get('longName', ticker)
+    except:
+        return ticker
+
+# Streamlit App
+def main():
+    st.set_page_config(page_title="Stock Sentiment Analyzer", page_icon="📈", layout="wide")
+    
+    # Initialize database
+    init_db()
+    
+    # Session state initialization
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'username' not in st.session_state:
+        st.session_state.username = ""
+    
+    # Authentication UI
+    if not st.session_state.logged_in:
+        st.title("Stock Sentiment Analyzer - Login")
+        
+        tab1, tab2 = st.tabs(["Login", "Register"])
+        
+        with tab1:
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+            
+            if st.button("Login"):
+                if verify_user(username, password):
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
+        
+        with tab2:
+            new_username = st.text_input("Choose Username", key="reg_username")
+            new_password = st.text_input("Choose Password", type="password", key="reg_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="confirm_password")
+            
+            if st.button("Register"):
+                if new_password != confirm_password:
+                    st.error("Passwords don't match")
+                elif len(new_password) < 6:
+                    st.error("Password must be at least 6 characters")
+                else:
+                    if create_user(new_username, new_password):
+                        st.success("Registration successful! Please login.")
+                    else:
+                        st.error("Username already exists")
+    
+    # Main application (only shown when logged in)
+    else:
+        st.title("Stock Sentiment Analysis")
+        st.markdown(f"Welcome, {st.session_state.username}! Analyze sentiment distribution from news articles for any stock ticker.")
+        
+        # Sidebar for inputs
+        st.sidebar.header("Configuration")
+        
+        # Logout button
+        if st.sidebar.button("Logout"):
+            st.session_state.logged_in = False
+            st.session_state.username = ""
+            st.rerun()
+        
+        # Ticker input
+        ticker = st.sidebar.text_input(
+            "Stock Ticker Symbol",
+            value="NVDA",
+            help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)"
+        ).upper()
+        
+        # Days input
+        days = st.sidebar.slider("Days to analyze", min_value=7, max_value=30, value=30)
+        
+        # Analyze button
+        analyze_button = st.sidebar.button("🔍 Analyze Sentiment", type="primary", use_container_width=True)
+        
+        # Main content area
+        if analyze_button:
+            if not ticker:
+                st.error("⚠️ Please enter a stock ticker")
+                return
+            
+            # Show loading spinner
+            with st.spinner(f'Fetching news articles for {ticker}...'):
+                # Track API usage
+                track_api_usage(st.session_state.username)
+                
+                # Get company name
+                company_name = get_company_name(ticker)
+                
+                # Calculate date range
+                from_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                
+                # Fetch articles
+                search_query = f"{ticker} stock OR {company_name} stock"
+                articles = get_articles(search_query, from_date)
+                
+                if not articles:
+                    st.warning(f"No articles found for {ticker} in the last {days} days")
+                    return
+                
+                # Create dataframe
+                articles_df = pd.DataFrame(articles)
+                articles_df = articles_df[['title', 'description', 'publishedAt', 'url', 'source']]
+                articles_df['source'] = articles_df['source'].apply(lambda x: x['name'])
+                
+                # Calculate sentiment
+                articles_df = calculate_sentiment(articles_df)
+                
+                # Display results
+                st.success(f"Found {len(articles_df)} articles for {company_name} ({ticker})")
+                
+                # Create columns for metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                avg_sentiment = articles_df['sentiment'].mean()
+                positive_count = len(articles_df[articles_df['sentiment'] > 0.05])
+                negative_count = len(articles_df[articles_df['sentiment'] < -0.05])
+                neutral_count = len(articles_df) - positive_count - negative_count
+                
+                with col1:
+                    st.metric("Average Sentiment", f"{avg_sentiment:.3f}")
+                with col2:
+                    st.metric("Positive Articles", positive_count)
+                with col3:
+                    st.metric("Neutral Articles", neutral_count)
+                with col4:
+                    st.metric("Negative Articles", negative_count)
+                
+                # Sentiment distribution chart
+                st.subheader("Sentiment Distribution")
+                
+                fig, ax = plt.subplots(figsize=(10, 6))
+                
+                # Create histogram
+                ax.hist(articles_df['sentiment'], bins=30, color='steelblue', edgecolor='black', alpha=0.7)
+                ax.axvline(x=0, color='red', linestyle='--', linewidth=2, label='Neutral')
+                ax.axvline(x=avg_sentiment, color='green', linestyle='--', linewidth=2, label=f'Average ({avg_sentiment:.3f})')
+                
+                ax.set_xlabel('Sentiment Score', fontsize=12)
+                ax.set_ylabel('Number of Articles', fontsize=12)
+                ax.set_title(f'Sentiment Distribution for {company_name} ({ticker})', fontsize=14, fontweight='bold')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                st.pyplot(fig)
+                
+                # Sentiment over time
+                st.subheader("Sentiment Over Time")
+                
+                articles_df['publishedAt'] = pd.to_datetime(articles_df['publishedAt'])
+                articles_df = articles_df.sort_values('publishedAt')
+                
+                fig2, ax2 = plt.subplots(figsize=(12, 6))
+                
+                ax2.scatter(articles_df['publishedAt'], articles_df['sentiment'], 
+                           alpha=0.6, s=50, c=articles_df['sentiment'], cmap='RdYlGn', edgecolors='black')
+                ax2.axhline(y=0, color='red', linestyle='--', linewidth=1, alpha=0.5)
+                
+                # Add trend line
+                from scipy import stats
+                x_numeric = (articles_df['publishedAt'] - articles_df['publishedAt'].min()).dt.total_seconds()
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, articles_df['sentiment'])
+                trend_line = slope * x_numeric + intercept
+                ax2.plot(articles_df['publishedAt'], trend_line, color='blue', linewidth=2, label='Trend', alpha=0.7)
+                
+                ax2.set_xlabel('Date', fontsize=12)
+                ax2.set_ylabel('Sentiment Score', fontsize=12)
+                ax2.set_title(f'Sentiment Timeline for {company_name} ({ticker})', fontsize=14, fontweight='bold')
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+                plt.xticks(rotation=45)
+                
+                st.pyplot(fig2)
+                
+                # Show articles table
+                st.subheader("Recent Articles")
+                
+                # Add sentiment label
+                def sentiment_label(score):
+                    if score > 0.05:
+                        return "🟢 Positive"
+                    elif score < -0.05:
+                        return "🔴 Negative"
+                    else:
+                        return "⚪ Neutral"
+                
+                articles_df['sentiment_label'] = articles_df['sentiment'].apply(sentiment_label)
+                
+                # Display table
+                display_df = articles_df[['publishedAt', 'title', 'source', 'sentiment', 'sentiment_label', 'url']].copy()
+                display_df['publishedAt'] = display_df['publishedAt'].dt.strftime('%Y-%m-%d %H:%M')
+                display_df = display_df.sort_values('publishedAt', ascending=False)
+                
+                st.dataframe(
+                    display_df,
+                    column_config={
+                        "publishedAt": "Published",
+                        "title": "Title",
+                        "source": "Source",
+                        "sentiment": st.column_config.NumberColumn("Score", format="%.3f"),
+                        "sentiment_label": "Sentiment",
+                        "url": st.column_config.LinkColumn("Link")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+if __name__ == "__main__":
+    main()
