@@ -254,7 +254,7 @@ def main():
     # Main application (only shown when logged in)
     else:
         st.title("Stock Sentiment Analysis")
-        st.markdown(f"Welcome, {st.session_state.username}! Analyze sentiment distribution from news articles for any stock ticker.")
+        st.markdown(f"Welcome, {st.session_state.username}! Analyze sentiment distribution for the last 30 days from top news articles for any stock in the S&P 500.")
         
         # Sidebar for inputs
         st.sidebar.header("Configuration")
