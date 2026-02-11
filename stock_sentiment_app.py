@@ -113,9 +113,17 @@ def calculate_sentiment(articles_df):
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def get_sp500_tickers():
     try:
-        # Get S&P 500 list from Wikipedia
+        import urllib.request
+        
+        # Add user agent to avoid 403 errors
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-        tables = pd.read_html(url)
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        
+        # Read HTML with user agent
+        with urllib.request.urlopen(req) as response:
+            tables = pd.read_html(response.read())
+        
         sp500_table = tables[0]
         
         # Create a dictionary with ticker and company name
@@ -127,8 +135,65 @@ def get_sp500_tickers():
         
         return tickers_dict
     except Exception as e:
-        st.warning(f"Could not load S&P 500 list: {str(e)}")
-        return {}
+        # Fallback: Return a curated list of popular S&P 500 stocks
+        return get_popular_sp500_tickers()
+
+# Fallback function with popular S&P 500 stocks
+def get_popular_sp500_tickers():
+    """Returns a curated list of popular S&P 500 stocks as fallback"""
+    popular_stocks = {
+        'AAPL': 'AAPL - Apple Inc.',
+        'MSFT': 'MSFT - Microsoft Corporation',
+        'GOOGL': 'GOOGL - Alphabet Inc. Class A',
+        'AMZN': 'AMZN - Amazon.com Inc.',
+        'NVDA': 'NVDA - NVIDIA Corporation',
+        'META': 'META - Meta Platforms Inc.',
+        'TSLA': 'TSLA - Tesla Inc.',
+        'BRK.B': 'BRK.B - Berkshire Hathaway Inc. Class B',
+        'JPM': 'JPM - JPMorgan Chase & Co.',
+        'JNJ': 'JNJ - Johnson & Johnson',
+        'V': 'V - Visa Inc.',
+        'UNH': 'UNH - UnitedHealth Group Inc.',
+        'XOM': 'XOM - Exxon Mobil Corporation',
+        'PG': 'PG - Procter & Gamble Co.',
+        'MA': 'MA - Mastercard Inc.',
+        'HD': 'HD - Home Depot Inc.',
+        'CVX': 'CVX - Chevron Corporation',
+        'BAC': 'BAC - Bank of America Corp.',
+        'ABBV': 'ABBV - AbbVie Inc.',
+        'KO': 'KO - Coca-Cola Co.',
+        'PEP': 'PEP - PepsiCo Inc.',
+        'COST': 'COST - Costco Wholesale Corporation',
+        'AVGO': 'AVGO - Broadcom Inc.',
+        'MRK': 'MRK - Merck & Co. Inc.',
+        'TMO': 'TMO - Thermo Fisher Scientific Inc.',
+        'WMT': 'WMT - Walmart Inc.',
+        'CSCO': 'CSCO - Cisco Systems Inc.',
+        'DIS': 'DIS - Walt Disney Co.',
+        'ABT': 'ABT - Abbott Laboratories',
+        'ACN': 'ACN - Accenture plc',
+        'ADBE': 'ADBE - Adobe Inc.',
+        'AMD': 'AMD - Advanced Micro Devices Inc.',
+        'NFLX': 'NFLX - Netflix Inc.',
+        'NKE': 'NKE - NIKE Inc.',
+        'ORCL': 'ORCL - Oracle Corporation',
+        'CRM': 'CRM - Salesforce Inc.',
+        'INTC': 'INTC - Intel Corporation',
+        'QCOM': 'QCOM - QUALCOMM Inc.',
+        'TXN': 'TXN - Texas Instruments Inc.',
+        'UPS': 'UPS - United Parcel Service Inc.',
+        'BA': 'BA - Boeing Co.',
+        'CAT': 'CAT - Caterpillar Inc.',
+        'GE': 'GE - General Electric Co.',
+        'IBM': 'IBM - International Business Machines Corp.',
+        'MMM': 'MMM - 3M Co.',
+        'GS': 'GS - Goldman Sachs Group Inc.',
+        'SPGI': 'SPGI - S&P Global Inc.',
+        'BLK': 'BLK - BlackRock Inc.',
+        'AXP': 'AXP - American Express Co.',
+        'NOW': 'NOW - ServiceNow Inc.',
+    }
+    return popular_stocks
 
 # Function to get company name from ticker
 def get_company_name(ticker):
@@ -215,6 +280,10 @@ def main():
             sp500_tickers = get_sp500_tickers()
             
             if sp500_tickers:
+                # Show info if using fallback list
+                if len(sp500_tickers) < 100:
+                    st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
+                
                 # Create list of display options
                 ticker_options = list(sp500_tickers.values())
                 ticker_symbols = list(sp500_tickers.keys())
