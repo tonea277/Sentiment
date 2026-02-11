@@ -219,7 +219,7 @@ def main():
     
     # Authentication UI
     if not st.session_state.logged_in:
-        st.title("Stock Sentiment Analyzer - Login")
+        st.title("VP Analytics Stock Sentiment Analyzer - Login")
         
         tab1, tab2 = st.tabs(["Login", "Register"])
         
