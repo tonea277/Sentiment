@@ -109,6 +109,27 @@ def calculate_sentiment(articles_df):
     articles_df['sentiment'] = sentiment_scores
     return articles_df
 
+# Function to get S&P 500 tickers
+@st.cache_data(ttl=86400)  # Cache for 24 hours
+def get_sp500_tickers():
+    try:
+        # Get S&P 500 list from Wikipedia
+        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+        tables = pd.read_html(url)
+        sp500_table = tables[0]
+        
+        # Create a dictionary with ticker and company name
+        tickers_dict = {}
+        for _, row in sp500_table.iterrows():
+            ticker = row['Symbol']
+            company = row['Security']
+            tickers_dict[ticker] = f"{ticker} - {company}"
+        
+        return tickers_dict
+    except Exception as e:
+        st.warning(f"Could not load S&P 500 list: {str(e)}")
+        return {}
+
 # Function to get company name from ticker
 def get_company_name(ticker):
     try:
@@ -179,12 +200,50 @@ def main():
             st.session_state.username = ""
             st.rerun()
         
-        # Ticker input
-        ticker = st.sidebar.text_input(
-            "Stock Ticker Symbol",
-            value="NVDA",
-            help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)"
-        ).upper()
+        # Ticker selection method
+        st.sidebar.subheader("Select Stock")
+        input_method = st.sidebar.radio(
+            "Input method:",
+            ["S&P 500 Dropdown", "Manual Entry"],
+            help="Choose from S&P 500 companies or enter any ticker manually"
+        )
+        
+        ticker = ""
+        
+        if input_method == "S&P 500 Dropdown":
+            # Load S&P 500 tickers
+            sp500_tickers = get_sp500_tickers()
+            
+            if sp500_tickers:
+                # Create list of display options
+                ticker_options = list(sp500_tickers.values())
+                ticker_symbols = list(sp500_tickers.keys())
+                
+                # Default to NVDA if available
+                default_idx = ticker_symbols.index("NVDA") if "NVDA" in ticker_symbols else 0
+                
+                selected_option = st.sidebar.selectbox(
+                    "Choose a company:",
+                    options=ticker_options,
+                    index=default_idx
+                )
+                
+                # Extract ticker symbol from selection
+                ticker = selected_option.split(" - ")[0]
+            else:
+                st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
+                ticker = st.sidebar.text_input(
+                    "Stock Ticker Symbol",
+                    value="NVDA",
+                    help="Enter a stock ticker"
+                ).upper()
+        else:
+            # Manual entry
+            ticker = st.sidebar.text_input(
+                "Stock Ticker Symbol",
+                value="NVDA",
+                help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)"
+            ).upper()
         
         # Days input
         days = st.sidebar.slider("Days to analyze", min_value=7, max_value=30, value=30)
