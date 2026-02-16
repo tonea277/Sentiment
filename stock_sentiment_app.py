@@ -364,6 +364,130 @@ def main():
         st.session_state.username = ""
         st.rerun()
 
+    # ══════════════════════════════════════════
+    # SIDEBAR — HPR first, Sentiment second
+    # ══════════════════════════════════════════
+
+    # ── HPR stock selection ───────────────────
+    st.sidebar.subheader("HPR — Stock Selection")
+    hpr_input_method = st.sidebar.radio(
+        "Input method:",
+        ["S&P 500 Dropdown", "Manual Entry"],
+        help="Choose from S&P 500 companies or enter any ticker manually",
+        key="hpr_input_method"
+    )
+    hpr_ticker = ""
+    if hpr_input_method == "S&P 500 Dropdown":
+        sp500_tickers_hpr = get_sp500_tickers()
+        if sp500_tickers_hpr:
+            if len(sp500_tickers_hpr) < 100:
+                st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
+            hpr_ticker_options = list(sp500_tickers_hpr.values())
+            hpr_ticker_symbols = list(sp500_tickers_hpr.keys())
+            hpr_default_idx = hpr_ticker_symbols.index("NVDA") if "NVDA" in hpr_ticker_symbols else 0
+            hpr_selected = st.sidebar.selectbox(
+                "Choose a company:",
+                options=hpr_ticker_options,
+                index=hpr_default_idx,
+                key="hpr_dropdown"
+            )
+            hpr_ticker = hpr_selected.split(" - ")[0]
+        else:
+            st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
+            hpr_ticker = st.sidebar.text_input(
+                "Ticker (HPR)", value="NVDA", key="hpr_manual_fallback"
+            ).upper()
+    else:
+        hpr_ticker = st.sidebar.text_input(
+            "Stock Ticker Symbol", value="NVDA",
+            help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)",
+            key="hpr_manual"
+        ).upper()
+
+    # ── HPR configuration ─────────────────────
+    st.sidebar.subheader("HPR — Configuration")
+    hpr_years = st.sidebar.multiselect(
+        "Years to display",
+        options=[2023, 2024, 2025],
+        default=[2023, 2024, 2025],
+        key="hpr_years"
+    )
+    hpr_pre_post = st.sidebar.radio(
+        "Pre or Post earnings",
+        options=["post", "pre"],
+        index=0,
+        key="hpr_pre_post"
+    )
+    hpr_horizons = st.sidebar.multiselect(
+        "Horizons (trading days)",
+        options=[1, 5, 10, 20],
+        default=[1, 5, 10, 20],
+        key="hpr_horizons"
+    )
+    st.sidebar.subheader("Earnings Dates")
+    default_dates = {
+        2025: "2025-02-26\n2025-05-28\n2025-08-27\n2025-11-19",
+        2024: "2024-02-21\n2024-05-22\n2024-08-28\n2024-11-20",
+        2023: "2023-02-22\n2023-05-24\n2023-08-23\n2023-11-21",
+    }
+    earnings_inputs = {}
+    for yr in [2023, 2024, 2025]:
+        with st.sidebar.expander(f"{yr} dates", expanded=False):
+            earnings_inputs[yr] = st.text_area(
+                f"Dates ({yr})",
+                value=default_dates[yr],
+                height=110,
+                key=f"hpr_dates_{yr}",
+                label_visibility="collapsed"
+            )
+    run_hpr = st.sidebar.button(
+        "📈 Run HPR Analysis", type="primary", use_container_width=True, key="hpr_btn"
+    )
+
+    st.sidebar.divider()
+
+    # ── Sentiment stock selection ─────────────
+    st.sidebar.subheader("Sentiment — Stock Selection")
+    input_method = st.sidebar.radio(
+        "Input method:",
+        ["S&P 500 Dropdown", "Manual Entry"],
+        help="Choose from S&P 500 companies or enter any ticker manually",
+        key="sent_input_method"
+    )
+    ticker = ""
+    if input_method == "S&P 500 Dropdown":
+        sp500_tickers = get_sp500_tickers()
+        if sp500_tickers:
+            if len(sp500_tickers) < 100:
+                st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
+            ticker_options = list(sp500_tickers.values())
+            ticker_symbols = list(sp500_tickers.keys())
+            default_idx = ticker_symbols.index("NVDA") if "NVDA" in ticker_symbols else 0
+            selected_option = st.sidebar.selectbox(
+                "Choose a company:",
+                options=ticker_options,
+                index=default_idx,
+                key="sent_dropdown"
+            )
+            ticker = selected_option.split(" - ")[0]
+        else:
+            st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
+            ticker = st.sidebar.text_input(
+                "Stock Ticker Symbol", value="NVDA", key="sent_manual_fallback"
+            ).upper()
+    else:
+        ticker = st.sidebar.text_input(
+            "Stock Ticker Symbol", value="NVDA",
+            help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)",
+            key="sent_manual"
+        ).upper()
+    days = st.sidebar.slider("Days to analyse", min_value=7, max_value=30, value=30, key="sent_days")
+    analyze_button = st.sidebar.button(
+        "🔍 Analyse Sentiment", type="primary", use_container_width=True, key="sent_btn"
+    )
+
+    st.sidebar.divider()
+
     # Top-level tabs
     tab_hpr, tab_sentiment = st.tabs(["📊 HPR Overlay", "📰 Sentiment Analysis"])
 
@@ -373,47 +497,6 @@ def main():
     with tab_sentiment:
         st.markdown(
             "Analyse sentiment distribution for the last 30 days from top news articles for any S&P 500 stock."
-        )
-
-        st.sidebar.subheader("Sentiment — Stock Selection")
-        input_method = st.sidebar.radio(
-            "Input method:",
-            ["S&P 500 Dropdown", "Manual Entry"],
-            help="Choose from S&P 500 companies or enter any ticker manually",
-            key="sent_input_method"
-        )
-
-        ticker = ""
-        if input_method == "S&P 500 Dropdown":
-            sp500_tickers = get_sp500_tickers()
-            if sp500_tickers:
-                if len(sp500_tickers) < 100:
-                    st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
-                ticker_options = list(sp500_tickers.values())
-                ticker_symbols = list(sp500_tickers.keys())
-                default_idx = ticker_symbols.index("NVDA") if "NVDA" in ticker_symbols else 0
-                selected_option = st.sidebar.selectbox(
-                    "Choose a company:",
-                    options=ticker_options,
-                    index=default_idx,
-                    key="sent_dropdown"
-                )
-                ticker = selected_option.split(" - ")[0]
-            else:
-                st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
-                ticker = st.sidebar.text_input(
-                    "Stock Ticker Symbol", value="NVDA", key="sent_manual_fallback"
-                ).upper()
-        else:
-            ticker = st.sidebar.text_input(
-                "Stock Ticker Symbol", value="NVDA",
-                help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)",
-                key="sent_manual"
-            ).upper()
-
-        days = st.sidebar.slider("Days to analyse", min_value=7, max_value=30, value=30, key="sent_days")
-        analyze_button = st.sidebar.button(
-            "🔍 Analyse Sentiment", type="primary", use_container_width=True, key="sent_btn"
         )
 
         if analyze_button:
@@ -538,91 +621,6 @@ def main():
         st.markdown(
             "Post-earnings Holding Period Return (HPR) overlay for NVDA across 2023–2025. "
             "Each line represents one quarterly earnings event; horizons are +1, +5, +10, +20 trading days."
-        )
-
-        # ── Sidebar controls for HPR tab ──────
-        st.sidebar.subheader("HPR — Stock Selection")
-
-        hpr_input_method = st.sidebar.radio(
-            "Input method:",
-            ["S&P 500 Dropdown", "Manual Entry"],
-            help="Choose from S&P 500 companies or enter any ticker manually",
-            key="hpr_input_method"
-        )
-
-        hpr_ticker = ""
-        if hpr_input_method == "S&P 500 Dropdown":
-            sp500_tickers_hpr = get_sp500_tickers()
-            if sp500_tickers_hpr:
-                if len(sp500_tickers_hpr) < 100:
-                    st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
-                hpr_ticker_options = list(sp500_tickers_hpr.values())
-                hpr_ticker_symbols = list(sp500_tickers_hpr.keys())
-                hpr_default_idx = hpr_ticker_symbols.index("NVDA") if "NVDA" in hpr_ticker_symbols else 0
-                hpr_selected = st.sidebar.selectbox(
-                    "Choose a company:",
-                    options=hpr_ticker_options,
-                    index=hpr_default_idx,
-                    key="hpr_dropdown"
-                )
-                hpr_ticker = hpr_selected.split(" - ")[0]
-            else:
-                st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
-                hpr_ticker = st.sidebar.text_input(
-                    "Ticker (HPR)", value="NVDA", key="hpr_manual_fallback"
-                ).upper()
-        else:
-            hpr_ticker = st.sidebar.text_input(
-                "Stock Ticker Symbol",
-                value="NVDA",
-                help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)",
-                key="hpr_manual"
-            ).upper()
-
-        st.sidebar.subheader("HPR — Configuration")
-
-        hpr_years = st.sidebar.multiselect(
-            "Years to display",
-            options=[2023, 2024, 2025],
-            default=[2023, 2024, 2025],
-            key="hpr_years"
-        )
-
-        hpr_pre_post = st.sidebar.radio(
-            "Pre or Post earnings",
-            options=["post", "pre"],
-            index=0,
-            key="hpr_pre_post"
-        )
-
-        hpr_horizons = st.sidebar.multiselect(
-            "Horizons (trading days)",
-            options=[1, 5, 10, 20],
-            default=[1, 5, 10, 20],
-            key="hpr_horizons"
-        )
-
-        # Earnings dates (editable as text area per year)
-        st.sidebar.subheader("Earnings Dates")
-        default_dates = {
-            2025: "2025-02-26\n2025-05-28\n2025-08-27\n2025-11-19",
-            2024: "2024-02-21\n2024-05-22\n2024-08-28\n2024-11-20",
-            2023: "2023-02-22\n2023-05-24\n2023-08-23\n2023-11-21",
-        }
-
-        earnings_inputs = {}
-        for yr in [2023, 2024, 2025]:
-            with st.sidebar.expander(f"{yr} dates", expanded=False):
-                earnings_inputs[yr] = st.text_area(
-                    f"Dates ({yr})",
-                    value=default_dates[yr],
-                    height=110,
-                    key=f"hpr_dates_{yr}",
-                    label_visibility="collapsed"
-                )
-
-        run_hpr = st.sidebar.button(
-            "📈 Run HPR Analysis", type="primary", use_container_width=True, key="hpr_btn"
         )
 
         if run_hpr:
