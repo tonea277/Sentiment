@@ -365,7 +365,7 @@ def main():
         st.rerun()
 
     # Top-level tabs
-    tab_sentiment, tab_hpr = st.tabs(["📰 Sentiment Analysis", "📊 HPR Overlay"])
+    tab_hpr, tab_sentiment = st.tabs(["📊 HPR Overlay", "📰 Sentiment Analysis"])
 
     # ══════════════════════════════════════════
     # TAB 1 — SENTIMENT
@@ -541,14 +541,45 @@ def main():
         )
 
         # ── Sidebar controls for HPR tab ──────
-        st.sidebar.subheader("HPR — Configuration")
+        st.sidebar.subheader("HPR — Stock Selection")
 
-        hpr_ticker = st.sidebar.text_input(
-            "Ticker (HPR)",
-            value="NVDA",
-            help="Ticker to compute HPR overlays for",
-            key="hpr_ticker"
-        ).upper()
+        hpr_input_method = st.sidebar.radio(
+            "Input method:",
+            ["S&P 500 Dropdown", "Manual Entry"],
+            help="Choose from S&P 500 companies or enter any ticker manually",
+            key="hpr_input_method"
+        )
+
+        hpr_ticker = ""
+        if hpr_input_method == "S&P 500 Dropdown":
+            sp500_tickers_hpr = get_sp500_tickers()
+            if sp500_tickers_hpr:
+                if len(sp500_tickers_hpr) < 100:
+                    st.sidebar.info("📋 Showing 50 popular S&P 500 stocks")
+                hpr_ticker_options = list(sp500_tickers_hpr.values())
+                hpr_ticker_symbols = list(sp500_tickers_hpr.keys())
+                hpr_default_idx = hpr_ticker_symbols.index("NVDA") if "NVDA" in hpr_ticker_symbols else 0
+                hpr_selected = st.sidebar.selectbox(
+                    "Choose a company:",
+                    options=hpr_ticker_options,
+                    index=hpr_default_idx,
+                    key="hpr_dropdown"
+                )
+                hpr_ticker = hpr_selected.split(" - ")[0]
+            else:
+                st.sidebar.warning("Could not load S&P 500 list. Please use manual entry.")
+                hpr_ticker = st.sidebar.text_input(
+                    "Ticker (HPR)", value="NVDA", key="hpr_manual_fallback"
+                ).upper()
+        else:
+            hpr_ticker = st.sidebar.text_input(
+                "Stock Ticker Symbol",
+                value="NVDA",
+                help="Enter a stock ticker (e.g., AAPL, GOOGL, TSLA, NVDA)",
+                key="hpr_manual"
+            ).upper()
+
+        st.sidebar.subheader("HPR — Configuration")
 
         hpr_years = st.sidebar.multiselect(
             "Years to display",
